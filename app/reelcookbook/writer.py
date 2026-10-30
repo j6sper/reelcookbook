@@ -3,12 +3,18 @@ linked recipe page and pictures go to Claude in one request, and the answer come
 in a fixed shape (structured output). It's saved as a draft for the household to check.
 Claude also adds tags and macros to recipes saved from websites or typed in.
 
-Needs ANTHROPIC_API_KEY. Without it, nothing here runs and imports wait for someone to write them up.
+Two ways to reach Claude, chosen in Settings:
+  - a Claude subscription (Pro or Max): Claude Code, inside the container, runs one request per post
+    with a token from `claude setup-token`. It has no tools: no files, no shell, no web.
+  - an API key from the Claude Console, billed per use.
+Without either, nothing here runs and imports wait for someone to write them up.
 """
 import asyncio
 import base64
 import json
 import logging
+import os
+import subprocess
 import time
 
 import anthropic
@@ -20,16 +26,43 @@ log = logging.getLogger(__name__)
 
 MAX_TRIES = 3                # per import / recipe, before it's left for a person
 BACKOFF = 5 * 60             # after a rate limit or an outage, wait this long
+USAGE_LIMIT_WAIT = 30 * 60   # after a subscription's usage limit, check again this often
 FALLBACK_MODELS = {"claude-fable-5-1", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"}
 KNOWN_TITLES = 300           # recent recipe titles shown to Claude, so it can spot duplicates
 
+CLAUDE_CODE_HOME = config.DATA_DIR / "claude-code"   # Claude Code's own settings folder (no sessions are kept)
+
+MODES = {"subscription": "Claude subscription", "api": "API key", "off": "Off"}
+MODELS = {"claude-opus-5-5": "Opus 5.5: the best recipes",
+          "claude-sonnet-5-5": "Sonnet 5.5: uses less of your plan or credit",
+          "claude-haiku-5-5": "Haiku 5.5: the lightest"}
+
 _loop = None
 _wake = asyncio.Event()
-_client = None
+_client = None, None    # (API key, client)
 
 
-def enabled():
-    return bool(config.ANTHROPIC_API_KEY)
+def settings():
+    """How to reach Claude: set in Settings, else from .env."""
+    s = setting("claude") or {}
+    token = s.get("oauth_token") or config.CLAUDE_CODE_OAUTH_TOKEN
+    key = s.get("api_key") or config.ANTHROPIC_API_KEY
+    mode = s.get("mode") or ("subscription" if token else "api" if key else "off")
+    return {"mode": mode, "oauth_token": token, "api_key": key,
+            "token_from_env": not s.get("oauth_token") and bool(config.CLAUDE_CODE_OAUTH_TOKEN),
+            "key_from_env": not s.get("api_key") and bool(config.ANTHROPIC_API_KEY),
+            "model": s.get("model") or config.CLAUDE_MODEL, "units": s.get("units") or config.UNITS}
+
+
+def save_settings(**changes):
+    set_setting("claude", {**(setting("claude") or {}), **changes})
+    set_status("idle")
+    wake()
+
+
+def enabled(s=None):
+    s = s or settings()
+    return bool(s["mode"] == "subscription" and s["oauth_token"] or s["mode"] == "api" and s["api_key"])
 
 
 def wake():
@@ -61,14 +94,16 @@ class Stop(Exception):
 UNITS = {"metric": "metric quantities (g, ml, °C), converting cups and ounces where it's clear",
          "us": "US quantities (cups, tbsp, oz, °F), as the creator gave them where possible"}
 
-SYSTEM = f"""You turn cooking posts from Instagram and TikTok, and screenshots of recipes, into clear recipes \
+
+def system_prompt(units):
+    return f"""You turn cooking posts from Instagram and TikTok, and screenshots of recipes, into clear recipes \
 for a household's recipe collection.
 
 You get the post's caption, a transcript of what's said in the video, any recipe web page the caption links \
 to, and pictures: the cover, still frames from the video, or the photo slides. Read on-screen text in the \
 pictures too; creators often show quantities there instead of saying them.
 
-Keep the creator's recipe and method. Use {UNITS[config.UNITS]}. One ingredient per line, with its quantity \
+Keep the creator's recipe and method. Use {UNITS[units]}. One ingredient per line, with its quantity \
 first ("200 g chicken thigh, diced"). One step per line, in order, without numbering. If quantities or times \
 are missing, give sensible estimates and say what you estimated in notes. Keep notes short; leave them empty \
 if there is nothing worth saying.
@@ -147,34 +182,42 @@ def import_content(item):
 
 # --- Calling Claude ---
 
-def ask(content, output_schema):
+def ask(content, output_schema, s=None):
     """One request to Claude; returns the parsed JSON answer. Raises Stop for problems that affect
     every request, ValueError for a problem with this one."""
+    s = s or settings()
+    if s["mode"] == "subscription":
+        return ask_subscription(content, output_schema, s)
+    return ask_api(content, output_schema, s)
+
+
+def ask_api(content, output_schema, s):
     global _client
-    if _client is None:
-        _client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    if _client[0] != s["api_key"]:
+        _client = s["api_key"], anthropic.Anthropic(api_key=s["api_key"])
     extra = {}
-    if config.CLAUDE_MODEL in FALLBACK_MODELS:
+    if s["model"] in FALLBACK_MODELS:
         # If a safety check declines the request, the API retries it on a suitable model by itself
         extra = {"betas": ["server-side-fallback-2026-07-01"], "fallbacks": "default"}
     try:
-        response = _client.beta.messages.create(
-            model=config.CLAUDE_MODEL,
+        response = _client[1].beta.messages.create(
+            model=s["model"],
             max_tokens=16000,
-            system=SYSTEM,
+            system=system_prompt(s["units"]),
             messages=[{"role": "user", "content": content}],
             output_config={"effort": "medium", "format": {"type": "json_schema", "schema": output_schema}},
             **extra,
         )
     except (anthropic.AuthenticationError, anthropic.PermissionDeniedError):
-        raise Stop("Claude didn't accept the API key. Check ANTHROPIC_API_KEY in .env, then restart the app.")
+        raise Stop("Claude didn't accept the API key. Check it in Settings → Claude.")
     except anthropic.NotFoundError:
-        raise Stop(f"Claude doesn't know the model “{config.CLAUDE_MODEL}”. Check CLAUDE_MODEL in .env.")
+        raise Stop(f"Claude doesn't know the model “{s['model']}”. Pick another in Settings → Claude.")
     except anthropic.RateLimitError:
         raise Stop("Claude is busy (rate limit). Trying again in a few minutes.", wait=BACKOFF)
     except anthropic.BadRequestError as e:
         if "credit balance" in str(e).lower():
-            raise Stop("The Anthropic account is out of credit. Top it up at console.anthropic.com, then tap Write now.")
+            raise Stop("The Claude Console account is out of credit. Add some at platform.claude.com → Billing, "
+                       "then tap Write now.")
         raise ValueError(f"Claude couldn't take this one ({e.message[:160]})")
     except anthropic.APIStatusError as e:
         if e.status_code >= 500:
@@ -191,6 +234,68 @@ def ask(content, output_schema):
         return json.loads(text)
     except ValueError:
         raise ValueError("Claude's answer wasn't readable")
+
+
+def ask_subscription(content, output_schema, s):
+    """The same request through Claude Code, on the household's Claude subscription."""
+    CLAUDE_CODE_HOME.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # Only what Claude Code needs: in particular no ANTHROPIC_API_KEY, which would be used instead of the plan
+    env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "HOME": str(CLAUDE_CODE_HOME),
+           "CLAUDE_CONFIG_DIR": str(CLAUDE_CODE_HOME / ".claude"), "CLAUDE_CODE_OAUTH_TOKEN": s["oauth_token"],
+           "DISABLE_AUTOUPDATER": "1", "TZ": config.TIMEZONE}
+    message = json.dumps({"type": "user", "message": {"role": "user", "content": content}})
+    command = ["claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+               "--model", s["model"], "--tools", "", "--strict-mcp-config", "--setting-sources", "",
+               "--no-session-persistence", "--system-prompt", system_prompt(s["units"]),
+               "--json-schema", json.dumps(output_schema)]
+    try:
+        run = subprocess.run(command, input=message, capture_output=True, text=True, timeout=600,
+                             cwd=CLAUDE_CODE_HOME, env=env)
+    except FileNotFoundError:
+        raise Stop("Claude Code isn't installed in this copy of the app. Rebuild it: docker compose up -d --build")
+    except subprocess.TimeoutExpired:
+        raise ValueError("Claude took too long with this one")
+    result = None
+    for line in run.stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if event.get("type") == "result":
+            result = event
+    if result is None:
+        log.warning("Claude Code gave no result (exit %s): %s", run.returncode, run.stderr[-500:])
+        raise ValueError("Claude Code stopped without an answer")
+    if result.get("is_error"):
+        status, text = result.get("api_error_status"), str(result.get("result") or "")
+        if status in (401, 403) or "authenticat" in text.lower():
+            raise Stop("Claude didn't accept the subscription token. Make a new one (Settings → Claude) and paste it in.")
+        if status == 429 or "usage limit" in text.lower():
+            raise Stop("Your Claude plan's usage limit is reached for now. Carrying on when it resets.",
+                       wait=USAGE_LIMIT_WAIT)
+        if status == 404:
+            raise Stop(f"Your Claude plan can't use the model “{s['model']}”. Pick another in Settings → Claude.")
+        if status and status >= 500:
+            raise Stop("Claude is having problems right now. Trying again in a few minutes.", wait=BACKOFF)
+        if status is None and run.returncode != 0 and not text:
+            raise Stop("Couldn't reach Claude (no internet?). Trying again in a few minutes.", wait=BACKOFF)
+        raise ValueError(f"Claude couldn't take this one ({text[:160]})")
+    answer = result.get("structured_output")
+    if not isinstance(answer, dict):
+        raise ValueError("Claude's answer wasn't readable")
+    return answer
+
+
+def test_connection(s):
+    """A tiny request, to check new settings. Returns (worked, message)."""
+    try:
+        ask([{"type": "text", "text": "This is a connection test. Reply with ok set to true."}],
+            schema({"ok": {"type": "boolean"}}), s)
+    except Stop as e:
+        return False, str(e)
+    except ValueError as e:
+        return False, str(e) + "."
+    return True, f"Connected. Claude ({MODELS.get(s['model'], s['model']).split(':')[0]}) is ready to write recipes."
 
 
 def known(v):
@@ -271,6 +376,8 @@ def work_through():
                 give_back(item, str(e))
                 failed += 1
                 continue
+            except Stop:
+                raise   # not this post's fault: it goes back to the pile untouched (below)
             except Exception:
                 give_back(item, "Something went wrong writing this one up")
                 raise
@@ -314,17 +421,18 @@ async def run():
     _loop = asyncio.get_running_loop()
     with get_db() as db:   # recover from a restart part-way through
         db.execute("UPDATE social_imports SET status = 'ready' WHERE status = 'writing'")
-    if not enabled():
-        log.info("No ANTHROPIC_API_KEY: imports will wait to be written up by hand")
-        return
     if status().get("state") in ("running", "error"):
         set_status("idle")
+    if not enabled():
+        log.info("Claude isn't set up: imports will wait to be written up by hand (see Settings → Claude)")
     while True:
         try:
             await asyncio.wait_for(_wake.wait(), timeout=180)
         except TimeoutError:
             pass
         _wake.clear()
+        if not enabled():
+            continue
         try:
             await asyncio.to_thread(work_through)
         except Stop as e:
@@ -334,7 +442,7 @@ async def run():
                 await asyncio.sleep(e.wait)
                 wake()
             else:
-                _wake.clear()   # wait for someone to tap Write now (or a restart with a new key)
+                _wake.clear()   # wait for new settings, or someone to tap Write now
                 await _wake.wait()
                 _wake.set()
         except Exception:

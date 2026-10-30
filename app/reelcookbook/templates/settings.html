@@ -5,7 +5,7 @@
   <h1>Settings</h1>
 </header>
 
-{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+{% if message and not ok %}<p class="notice">{{ message }}</p>{% endif %}
 
 <section class="card" id="members">
   <h2>Household</h2>
@@ -29,12 +29,79 @@
 
 <section class="card" id="claude">
   <h2>Claude</h2>
-  {% if writer_on %}
-  <p>✓ Set up. Claude ({{ model }}) writes up each imported post and adds tags and macros to every recipe. Quantities are written in {{ "metric" if units == "metric" else "US" }} units.</p>
-  {% else %}
-  <p class="muted">Not set up. Imports are downloaded and transcribed, and you write the recipes up yourself.</p>
+  <p class="muted">Claude turns each imported post into a recipe and adds tags and macros to every recipe. Choose how {{ app_name }} reaches Claude.</p>
+  {% if ok %}<p class="notice good">✓ {{ message }}</p>{% endif %}
+  <form method="post" action="/settings/claude" class="stack" id="claude-form">
+    <fieldset class="choices">
+      <legend class="sr-only">How to reach Claude</legend>
+      <label class="choice"><input type="radio" name="mode" value="subscription"{{ " checked" if claude.mode == "subscription" }}>
+        <span><strong>My Claude subscription</strong> <span class="tag">recommended</span><span class="hint">Uses your Pro or Max plan's allowance. Nothing extra to pay.</span></span></label>
+      <label class="choice"><input type="radio" name="mode" value="api"{{ " checked" if claude.mode == "api" }}>
+        <span><strong>An API key</strong><span class="hint">Pay as you go from the Claude Console: a few cents per post.</span></span></label>
+      <label class="choice"><input type="radio" name="mode" value="off"{{ " checked" if claude.mode == "off" }}>
+        <span><strong>Off</strong><span class="hint">Posts are still downloaded and transcribed; you write each recipe up yourself.</span></span></label>
+    </fieldset>
+
+    <div class="stack" data-mode="subscription">
+      <label>Subscription token
+        <input name="oauth_token" type="password" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"
+               placeholder="{{ 'Saved (' ~ token_hint ~ (', from .env' if claude.token_from_env else '') ~ '): paste a new one to replace it' if token_hint else 'sk-ant-oat01-…' }}"></label>
+      <details>
+        <summary>How to get a subscription token</summary>
+        <p class="hint">You need a paid Claude plan (Pro or Max) at <a href="https://claude.ai" target="_blank" rel="noopener">claude.ai</a>. The token lasts a year, and only lets {{ app_name }} ask Claude questions: it can't see your chats or change your account.</p>
+        <ol class="steps">
+          <li>On the computer running {{ app_name }}, open a terminal in the <span class="mono">reelcookbook</span> folder and run:<br>
+            <span class="mono">docker compose exec reelcookbook claude setup-token</span></li>
+          <li>It shows a link. Open it in any browser (your phone is fine), sign in to Claude and tap <strong>Authorize</strong>.</li>
+          <li>Claude shows a code. Copy it, paste it back into the terminal and press Enter.</li>
+          <li>The terminal prints your token, starting <span class="mono">sk-ant-oat01-</span>. Copy all of it and paste it above.</li>
+        </ol>
+        <p class="hint">Already have <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a> on another computer? <span class="mono">claude setup-token</span> works there too. Each person should use their own Claude account: don't share a token between households.</p>
+      </details>
+    </div>
+
+    <div class="stack" data-mode="api">
+      <label>API key
+        <input name="api_key" type="password" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"
+               placeholder="{{ 'Saved (' ~ key_hint ~ (', from .env' if claude.key_from_env else '') ~ '): paste a new one to replace it' if key_hint else 'sk-ant-api03-…' }}"></label>
+      <details>
+        <summary>How to get an API key</summary>
+        <ol class="steps">
+          <li>Go to the <a href="https://platform.claude.com" target="_blank" rel="noopener">Claude Console</a> (platform.claude.com) and sign up or log in. This is separate from a claude.ai subscription.</li>
+          <li>Open <strong>Billing</strong> and add some credit ($5 goes a long way: each post costs a few cents).</li>
+          <li>Open <strong>API keys</strong> → <strong>Create key</strong>, give it a name like “{{ app_name }}”, and copy it. It starts <span class="mono">sk-ant-api03-</span> and is only shown once.</li>
+          <li>Paste it above.</li>
+        </ol>
+      </details>
+    </div>
+
+    <div class="two" data-mode="subscription api">
+      <label>Model
+        <select name="model">{% for id, label in models.items() %}<option value="{{ id }}"{{ " selected" if claude.model == id }}>{{ label }}</option>{% endfor %}</select></label>
+      <label>Quantities
+        <select name="units"><option value="metric"{{ " selected" if claude.units == "metric" }}>Metric (g, ml, °C)</option><option value="us"{{ " selected" if claude.units == "us" }}>US (cups, oz, °F)</option></select></label>
+    </div>
+    <button class="primary" id="claude-save">Save and test</button>
+  </form>
+  {% if token_hint and not claude.token_from_env or key_hint and not claude.key_from_env %}
+  <div class="button-row forget">
+    {% if token_hint and not claude.token_from_env %}<form method="post" action="/settings/claude/forget"><input type="hidden" name="what" value="oauth_token"><button class="quiet-inline small">Remove the saved token</button></form>{% endif %}
+    {% if key_hint and not claude.key_from_env %}<form method="post" action="/settings/claude/forget"><input type="hidden" name="what" value="api_key"><button class="quiet-inline small">Remove the saved API key</button></form>{% endif %}
+  </div>
   {% endif %}
-  <p class="hint">Change this in the <span class="mono">.env</span> file on the server (<span class="mono">ANTHROPIC_API_KEY</span>, <span class="mono">CLAUDE_MODEL</span>, <span class="mono">UNITS</span>), then restart the app.</p>
+  <script>
+    (function () {
+      var form = document.getElementById("claude-form");
+      function show() {
+        var mode = form.querySelector("input[name=mode]:checked");
+        [].forEach.call(form.querySelectorAll("[data-mode]"), function (el) {
+          el.hidden = !mode || el.getAttribute("data-mode").split(" ").indexOf(mode.value) < 0;
+        });
+      }
+      form.addEventListener("change", show); show();
+      form.addEventListener("submit", function () { var b = document.getElementById("claude-save"); b.disabled = true; b.textContent = "Testing…"; });
+    })();
+  </script>
 </section>
 
 <section class="card" id="password">

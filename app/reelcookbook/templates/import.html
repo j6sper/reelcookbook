@@ -9,7 +9,7 @@
 
 <section class="card">
   <h2>How it works</h2>
-  <p class="muted">{{ app_name }} downloads each post, keeps the caption, writes down what's said in the video and saves the cover, a few still frames or the photo slides. {% if writer_on %}Claude then turns it into a recipe draft for you to check.{% else %}You then write the recipe up from those (or add a Claude API key to have it done for you).{% endif %} Videos are deleted straight away.</p>
+  <p class="muted">{{ app_name }} downloads each post, keeps the caption, writes down what's said in the video and saves the cover, a few still frames or the photo slides. {% if writer_on %}Claude then turns it into a recipe draft for you to check.{% else %}You then write the recipe up from those (or <a href="/settings#claude">connect Claude</a> to have it done for you).{% endif %} Videos are deleted straight away.</p>
 </section>
 
 <section class="card stack">
@@ -27,7 +27,7 @@
 <section class="card stack">
   <h2>Claude</h2>
   {% if not writer_on %}
-  <p class="muted">Not set up. Add an Anthropic API key (<span class="mono">ANTHROPIC_API_KEY</span> in <span class="mono">.env</span>) and Claude writes each downloaded post up as a recipe by itself. Until then, tap a post that's ready to write it up yourself.</p>
+  <p class="muted">Not set up. Connect your Claude subscription (or an API key) in <a href="/settings#claude">Settings → Claude</a> and Claude writes each downloaded post up as a recipe by itself. Until then, tap a post that's ready to write it up yourself.</p>
   {% elif writer.state == "running" %}
   <p>Working on it now… <span class="muted">{{ writer.message }}</span></p>
   {% elif writer.state and writer.message %}

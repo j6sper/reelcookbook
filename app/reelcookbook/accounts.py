@@ -1,4 +1,5 @@
 """First-time setup, login, Settings (household members, password) and the Share menu."""
+import asyncio
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -96,9 +97,61 @@ def share(user=Depends(auth.require_user), title: str = "", text: str = "", url:
 # --- Settings ---
 
 @router.get("/settings")
-def settings(request: Request, user=Depends(auth.require_user), message: str = ""):
-    return page(request, "settings.html", user, active="settings", members=auth.list_users(), message=message,
-                writer_on=writer.enabled(), model=config.CLAUDE_MODEL, units=config.UNITS)
+def settings(request: Request, user=Depends(auth.require_user), message: str = "", ok: str = ""):
+    claude = writer.settings()
+    response = page(request, "settings.html", user, active="settings", members=auth.list_users(), message=message,
+                    ok=ok, claude=claude, writer_on=writer.enabled(claude), modes=writer.MODES,
+                    models={**writer.MODELS, **({} if claude["model"] in writer.MODELS else {claude["model"]: claude["model"]})},
+                    token_hint=hint(claude["oauth_token"]), key_hint=hint(claude["api_key"]))
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def hint(secret):
+    """Enough of a saved token or key to recognise it, never the whole thing."""
+    return f"…{secret[-4:]}" if secret else ""
+
+
+def back(message, worked=None):
+    return RedirectResponse(f"/settings?message={quote(message)}" + ("&ok=1" if worked else "") + "#claude",
+                            status_code=303)
+
+
+@router.post("/settings/claude")
+async def save_claude(user=Depends(auth.require_user), mode: str = Form("off"), oauth_token: str = Form(""),
+                      api_key: str = Form(""), model: str = Form(""), units: str = Form("metric")):
+    token, key = "".join(oauth_token.split()), "".join(api_key.split())   # pasted text often has spaces or line breaks
+    if token.startswith("sk-ant-api") or key.startswith("sk-ant-oat"):
+        return back("That looks like it went in the wrong box: subscription tokens start sk-ant-oat, "
+                    "API keys start sk-ant-api. Nothing was changed.")
+    if token and not token.startswith("sk-ant-"):
+        return back("That isn't a Claude token: it should start sk-ant-oat. Nothing was changed.")
+    if key and not key.startswith("sk-ant-"):
+        return back("That isn't a Claude API key: it should start sk-ant-api. Nothing was changed.")
+    changes = {"mode": mode if mode in writer.MODES else "off", "model": model.strip() or config.CLAUDE_MODEL,
+               "units": "us" if units == "us" else "metric"}
+    if token:
+        changes["oauth_token"] = token
+    if key:
+        changes["api_key"] = key
+    claude = {**writer.settings(), **changes}
+    if changes["mode"] == "off":
+        writer.save_settings(**changes)
+        return back("Saved. Claude is off: you write imported recipes up yourself.")
+    if not writer.enabled(claude):
+        return back("To use " + ("your Claude subscription, paste a token" if changes["mode"] == "subscription"
+                                 else "an API key, paste the key") + " (see the steps below). Nothing was changed.")
+    worked, message = await asyncio.to_thread(writer.test_connection, claude)
+    writer.save_settings(**changes)   # saved either way, so a slip can be fixed without pasting it all again
+    return back(message if worked else "Saved, but the test didn't work: " + message, worked)
+
+
+@router.post("/settings/claude/forget")
+def forget_claude(user=Depends(auth.require_user), what: str = Form("")):
+    if what in ("oauth_token", "api_key"):
+        writer.save_settings(**{what: ""})
+    return back("Removed." + (" (The one in .env is still used: delete it there too.)"
+                              if writer.settings()[what] else ""))
 
 
 @router.post("/settings/members")

@@ -243,3 +243,15 @@ fieldset.tick-grid legend { font-weight: 600; padding: 0; margin-bottom: 8px; }
 
 /* Import queue */
 .queue-thumb { flex: none; width: 48px; height: 48px; border-radius: 10px; object-fit: cover; background: var(--surface-raised); }
+
+/* Settings: choosing how to reach Claude */
+fieldset.choices { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+label.choice { flex-direction: row; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid var(--line-strong);
+  border-radius: 14px; background: var(--surface-raised); font-weight: normal; cursor: pointer; }
+label.choice:has(input:checked) { border-color: var(--gold); }
+label.choice input { flex: none; width: 20px; height: 20px; margin-top: 2px; accent-color: var(--gold); }
+label.choice .hint { display: block; margin-top: 2px; }
+.notice.good { background: var(--good-bg); color: var(--good-text); border-color: rgba(179, 211, 140, 0.3); }
+.forget { margin-top: 8px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+[hidden] { display: none !important; }

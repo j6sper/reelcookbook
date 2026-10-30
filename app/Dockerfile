@@ -4,7 +4,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
 # ffmpeg: pulls the audio and still frames out of recipe videos
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl ca-certificates && rm -rf /var/lib/apt/lists/*
+
+# Claude Code: writes the recipes on a Claude subscription (Pro or Max) instead of an API key.
+# Pinned, so an update never changes behaviour by surprise; bump CLAUDE_CODE_VERSION to update.
+ARG CLAUDE_CODE_VERSION=2.1.314
+RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION} \
+    && cp -L /root/.local/bin/claude /usr/local/bin/claude \
+    && rm -rf /root/.local /root/.claude* \
+    && claude --version
+# The app runs as your user, who has no home folder in here; Claude Code needs one to write to
+ENV DISABLE_AUTOUPDATER=1 HOME=/tmp
 
 WORKDIR /app
 COPY requirements.txt .

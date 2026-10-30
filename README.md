@@ -18,7 +18,11 @@ Everything runs on your own computer, and your recipes stay in one folder on it.
 
 - A computer that stays on (a home server, NAS, Raspberry Pi 4/5 or an old PC) with **Docker** installed ([Get Docker](https://docs.docker.com/get-docker/)).
 - About 2 GB of disk space, plus room for your recipes' pictures.
-- **Optional, but recommended:** an Anthropic API key, so Claude writes the recipes for you. Get one at [console.anthropic.com](https://console.anthropic.com) → Settings → API keys, and add some credit. Each post costs a few cents with the default model (less with a cheaper one; see [Settings](#settings)). Without a key, posts are still downloaded and transcribed, and you write each recipe up yourself from the caption, transcript and pictures.
+- **Recommended:** a way for Claude to write the recipes for you. Either:
+  - a **Claude Pro or Max subscription** (from [claude.ai](https://claude.ai)): it uses your plan's allowance, with nothing extra to pay, or
+  - an **API key** from the [Claude Console](https://platform.claude.com): pay as you go, a few cents per post.
+
+  Without either, posts are still downloaded and transcribed, and you write each recipe up yourself from the caption, transcript and pictures. See [Connect Claude](#connect-claude).
 
 ## Quick start
 
@@ -26,11 +30,11 @@ Everything runs on your own computer, and your recipes stay in one folder on it.
 git clone https://github.com/<you>/reelcookbook.git
 cd reelcookbook
 cp .env.example .env
-nano .env                  # paste your ANTHROPIC_API_KEY and set your TIMEZONE
+nano .env                  # set your TIMEZONE
 docker compose up -d
 ```
 
-Then open **http://\<the computer's IP address\>:8095** on your phone or computer. The first visit asks you to create an account. Add everyone else in **Settings → Household**.
+Then open **http://\<the computer's IP address\>:8095** on your phone or computer. The first visit asks you to create an account. Then go to **Settings → Claude** to [connect Claude](#connect-claude), and add everyone else in **Settings → Household**.
 
 The first video import takes a minute longer than the rest, while the speech-to-text model downloads (about 140 MB, once).
 
@@ -48,6 +52,37 @@ Run these in the `reelcookbook` folder.
 | Update to the latest version | `git pull && docker compose up -d --build` |
 
 It starts by itself when the computer boots.
+
+## Connect Claude
+
+In the app: **Settings → Claude**. Pick one, paste in the token or key, and tap **Save and test**: it checks it works straight away.
+
+### With a Claude subscription (recommended)
+
+You need a paid Claude plan (Pro or Max). You make a sign-in token once; it lasts a year and only lets Reel Cookbook ask Claude questions (it can't see your chats or change your account).
+
+1. On the computer running Reel Cookbook, in the `reelcookbook` folder, run:
+   ```
+   docker compose exec reelcookbook claude setup-token
+   ```
+2. It shows a link. Open it in any browser (your phone is fine), sign in to Claude and tap **Authorize**.
+3. Claude shows a code. Paste it back into the terminal and press Enter.
+4. The terminal prints your token, starting `sk-ant-oat01-`. Copy all of it into **Settings → Claude → Subscription token**.
+
+(If you already have [Claude Code](https://claude.com/claude-code) on another computer, `claude setup-token` there works too.)
+
+Each post uses some of your plan's allowance, like a short chat with pictures. Importing hundreds of saved posts at once can reach your plan's usage limit; Reel Cookbook then pauses and carries on by itself when the limit resets. Use your own Claude account: don't share a token with another household.
+
+### With an API key
+
+1. Go to the [Claude Console](https://platform.claude.com) and sign up or log in. (It's separate from a claude.ai subscription.)
+2. Open **Billing** and add some credit. $5 goes a long way: each post costs a few cents with the default model.
+3. Open **API keys → Create key**, name it "Reel Cookbook" and copy it. It starts `sk-ant-api03-` and is only shown once.
+4. Paste it into **Settings → Claude → API key**.
+
+### Model and units
+
+Also in Settings → Claude: **Opus 5.5** writes the best recipes; **Sonnet 5.5** and **Haiku 5.5** use less of your plan or credit. Quantities can be metric (g, ml, °C) or US (cups, oz, °F).
 
 ## Adding recipes
 
@@ -74,30 +109,29 @@ It's stored privately in `data/secrets/`. Treat it like a password. It stops wor
 - **iPhone:** open the app in **Safari**, tap Share → **Add to Home Screen**.
 - **Android:** open it in Chrome, tap ⋮ → **Add to Home screen** (or **Install app**).
 
-## Settings
+## Settings in `.env`
 
-All in `.env`. Run `docker compose up -d` after changing it.
+Claude is set up in the app. A few things that need a restart live in `.env`; run `docker compose up -d` after changing it.
 
 | Setting | What it does |
 |---|---|
-| `ANTHROPIC_API_KEY` | Your Claude API key. Leave empty to write recipes up yourself. |
-| `CLAUDE_MODEL` | `claude-opus-5-5` (default, best results), `claude-sonnet-5-5` (cheaper), or `claude-haiku-5-5` (cheapest). |
-| `UNITS` | `metric` (g, ml, °C) or `us` (cups, oz, °F): how Claude writes quantities. |
 | `TIMEZONE` | Your time zone, e.g. `Australia/Brisbane`, `Europe/London`, `America/New_York`. |
 | `PORT` | The port the app is opened on (default 8095). |
 | `APP_NAME` | The name shown in the app and under the home-screen icon. |
+| `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `UNITS` | Optional: Claude settings, if you'd rather keep them here. Anything saved in the app takes priority. |
 
 ## Where things live
 
 | Path | What it is |
 |---|---|
-| `data/` | **All your data**: the database, recipe photos, post pictures and the Instagram login. Back this up. |
-| `data/reelcookbook.db` | The database (recipes, imports, accounts). |
+| `data/` | **All your data**: the database, recipe photos, post pictures, the Instagram login and your Claude token or key. Back this up. |
+| `data/reelcookbook.db` | The database (recipes, imports, accounts, and the Claude settings). |
 | `data/recipe-images/` | Recipe photos. |
 | `data/social/` | The covers, still frames and slides from imported posts. |
 | `data/secrets/` | The Instagram login cookies. |
 | `data/models/` | The speech-to-text model (downloaded again automatically if deleted). |
-| `.env` | Your settings and API key. Never share it or put it in git. |
+| `data/claude-code/` | Claude Code's settings folder (no conversations are kept). |
+| `.env` | A few settings. Never share it or put it in git. |
 | `app/` | The code. |
 
 ## Back up
@@ -110,7 +144,7 @@ tar czf ~/reelcookbook-backup-$(date +%Y-%m-%d).tar.gz data .env
 docker compose start
 ```
 
-Copy the file somewhere else (another computer, a NAS, cloud storage). It contains your API key and Instagram login, so keep it private.
+Copy the file somewhere else (another computer, a NAS, cloud storage). It contains your Claude token or key and your Instagram login, so keep it private.
 
 To restore: `docker compose down`, move the old `data` folder aside, `tar xzf` the backup in the `reelcookbook` folder, then `docker compose up -d`.
 
@@ -122,8 +156,11 @@ The app is meant for your home network. To use it on your phone when you're out,
 
 - **Every Instagram post fails with "wants a login":** upload a fresh cookies file (above).
 - **Downloads fail for everything:** Instagram and TikTok change often. Update to the latest version (`git pull && docker compose up -d --build`); if that doesn't help, bump `yt-dlp` in `app/requirements.txt` to the [latest release](https://pypi.org/project/yt-dlp/#history) and run `docker compose up -d --build`.
-- **The Import page says Claude didn't accept the key, or the account is out of credit:** check the key and your credit at console.anthropic.com, fix `.env`, then `docker compose up -d`.
+- **The Import page says Claude didn't accept the token or key:** subscription tokens last a year. Make a new one ([above](#with-a-claude-subscription-recommended)) and paste it into Settings → Claude.
+- **"Out of credit" (API key):** add credit at platform.claude.com → Billing, then tap **Write now** on the Import page.
+- **"Usage limit reached" (subscription):** nothing to do. It carries on by itself when your plan's limit resets. Pick Sonnet or Haiku in Settings → Claude to make your allowance go further.
 - **Forgotten password:** another household member can't reset it yet. Stop the app and delete that person's row, or ask whoever set it up.
+- **Updating Claude Code:** it's pinned in `app/Dockerfile` (`CLAUDE_CODE_VERSION`). Change the number and run `docker compose up -d --build`.
 - **`unable to open database file` in the logs:** the `data` folder belongs to root. Run `sudo chown -R $(id -u):$(id -g) data` and start again.
 
 ## How it works
@@ -131,10 +168,10 @@ The app is meant for your home network. To use it on your phone when you're out,
 A small Python web app (FastAPI and SQLite) in one Docker container:
 
 - `app/reelcookbook/social.py`: the import queue. [yt-dlp](https://github.com/yt-dlp/yt-dlp) downloads each post, ffmpeg takes still frames and the audio, [faster-whisper](https://github.com/SYSTRAN/faster-whisper) transcribes it on your own computer, and [recipe-scrapers](https://github.com/hhursev/recipe-scrapers) reads any linked recipe site.
-- `app/reelcookbook/writer.py`: sends each downloaded post (text plus pictures) to Claude in one request, and gets the recipe back in a fixed shape.
+- `app/reelcookbook/writer.py`: sends each downloaded post (text plus pictures) to Claude in one request, and gets the recipe back in a fixed shape. With a subscription it runs [Claude Code](https://claude.com/claude-code) (installed in the container) with every tool switched off: no files, no shell, no web; with an API key it calls the Claude API.
 - `app/reelcookbook/recipes.py`: the recipe pages, website import, tags, macros and filters.
 
-Only the post's text and pictures are sent to Anthropic, and only when an API key is set. Nothing else leaves your network.
+Only the post's text and pictures (and the titles of your saved recipes, so Claude can spot duplicates) are sent to Anthropic, and only when Claude is connected.
 
 ## Credits
 
