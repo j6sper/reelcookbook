@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Log in · {{ app_name }}{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1 class="brand">{{ app_name }}</h1>
+  <form method="post" action="/login" class="card stack">
+    {% if error %}<p class="alert">{{ error }}</p>{% endif %}
+    <input type="hidden" name="next" value="{{ next }}">
+    <label>Username
+      <input name="username" value="{{ username or '' }}" autocomplete="username" autocapitalize="none" autocorrect="off" required autofocus>
+    </label>
+    <label>Password
+      <input name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <button class="primary">Log in</button>
+  </form>
+</div>
+{% endblock %}

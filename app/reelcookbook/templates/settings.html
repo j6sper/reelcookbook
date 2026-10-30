@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Settings · {{ app_name }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <h1>Settings</h1>
+</header>
+
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+
+<section class="card" id="members">
+  <h2>Household</h2>
+  <ul class="list">
+    {% for m in members %}
+    <li><strong>{{ m.display_name }}</strong> <span class="muted">{{ m.username }}</span>{% if m.id == user.id %} <span class="tag">you</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  <details>
+    <summary>Add someone</summary>
+    <form method="post" action="/settings/members" class="stack">
+      <label>Name <input name="display_name" required></label>
+      <label>Username <input name="username" autocapitalize="none" autocorrect="off" required></label>
+      <label>Password <span class="hint">(at least 8 characters)</span>
+        <input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label>Password again <input name="password2" type="password" autocomplete="new-password" minlength="8" required></label>
+      <button class="primary">Add</button>
+    </form>
+  </details>
+</section>
+
+<section class="card" id="claude">
+  <h2>Claude</h2>
+  {% if writer_on %}
+  <p>✓ Set up. Claude ({{ model }}) writes up each imported post and adds tags and macros to every recipe. Quantities are written in {{ "metric" if units == "metric" else "US" }} units.</p>
+  {% else %}
+  <p class="muted">Not set up. Imports are downloaded and transcribed, and you write the recipes up yourself.</p>
+  {% endif %}
+  <p class="hint">Change this in the <span class="mono">.env</span> file on the server (<span class="mono">ANTHROPIC_API_KEY</span>, <span class="mono">CLAUDE_MODEL</span>, <span class="mono">UNITS</span>), then restart the app.</p>
+</section>
+
+<section class="card" id="password">
+  <h2>Your password</h2>
+  <details>
+    <summary>Change it</summary>
+    <form method="post" action="/settings/password" class="stack">
+      <label>Current password <input name="current" type="password" autocomplete="current-password" required></label>
+      <label>New password <span class="hint">(at least 8 characters)</span>
+        <input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label>New password again <input name="password2" type="password" autocomplete="new-password" minlength="8" required></label>
+      <button class="primary">Change password</button>
+    </form>
+  </details>
+</section>
+
+<section class="card">
+  <h2>On your phone</h2>
+  <p><strong>iPhone:</strong> open this page in Safari, tap Share → <strong>Add to Home Screen</strong>.</p>
+  <p><strong>Android:</strong> in Chrome, tap ⋮ → <strong>Add to Home screen</strong> (or Install app). {{ app_name }} then shows up when you share a post from Instagram or TikTok.</p>
+</section>
+
+<form method="post" action="/logout"><button class="quiet">Log out</button></form>
+{% endblock %}

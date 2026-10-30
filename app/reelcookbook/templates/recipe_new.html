@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Add recipe · {{ app_name }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <a class="back" href="/recipes">‹ Recipes</a>
+  <h1>Add a recipe</h1>
+</header>
+<form method="post" action="/recipes/import" class="card stack" id="import-form">
+  <h2>From a website</h2>
+  {% if error %}<p class="alert">{{ error }}</p>{% endif %}
+  <label>Recipe web address
+    <input name="url" value="{{ url }}" placeholder="https://…" inputmode="url" autocapitalize="none" autocorrect="off" required>
+  </label>
+  <div class="button-row">
+    <button class="primary" id="import-btn">Save recipe</button>
+    <button type="button" id="paste-btn" hidden>Paste link</button>
+  </div>
+  <p class="hint">In Safari, tap Share → Copy on the recipe page, then come back here.</p>
+</form>
+
+<details class="card"{{ " open" if error }}>
+  <summary>Or type one in</summary>
+  <form method="post" action="/recipes/manual" class="stack">
+    <input type="hidden" name="url" value="{{ url }}">
+    <label>Name <input name="title" required></label>
+    <label>Ingredients <span class="hint">(one per line)</span><textarea name="ingredients" rows="6"></textarea></label>
+    <label>Method <span class="hint">(one step per line)</span><textarea name="steps" rows="6"></textarea></label>
+    <button class="primary">Save recipe</button>
+  </form>
+</details>
+<script>
+  (function () {
+    var form = document.getElementById("import-form"), btn = document.getElementById("import-btn");
+    form.addEventListener("submit", function () { btn.disabled = true; btn.textContent = "Reading the recipe…"; });
+    var paste = document.getElementById("paste-btn");
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      paste.hidden = false;
+      paste.addEventListener("click", function () {
+        navigator.clipboard.readText().then(function (text) {
+          var m = (text || "").match(/https?:\/\/\S+/);
+          if (m) { form.url.value = m[0]; }
+        }).catch(function () {});
+      });
+    }
+  })();
+</script>
+{% endblock %}

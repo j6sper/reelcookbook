@@ -1,0 +1,7 @@
+# Settings, secrets and household data never go into git
+.env
+data/*
+!data/.gitkeep
+
+__pycache__/
+*.pyc

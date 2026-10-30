@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Write up · {{ app_name }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <a class="back" href="/import">‹ Import</a>
+  <h1>Write it up</h1>
+  <p class="muted">{% if item.platform == "screenshot" %}Screenshots{% else %}<a href="{{ item.url }}" target="_blank" rel="noopener">{{ item.uploader or (item.platform | title) }} on {{ item.platform | title }}</a>{% endif %}</p>
+</header>
+{% if item.error %}<p class="notice">{{ item.error }}</p>{% endif %}
+
+{% if pictures %}
+<section class="card">
+  <h2>Pictures</h2>
+  <div class="photo-picks">
+    {% for name in pictures %}<a href="/import/{{ item.id }}/pictures/{{ name }}" target="_blank" class="photo-pick"><img src="/import/{{ item.id }}/pictures/{{ name }}" alt="{{ name }}" loading="lazy"></a>{% endfor %}
+  </div>
+</section>
+{% endif %}
+{% if item.caption %}<section class="card"><h2>{{ "Note" if item.platform == "screenshot" else "Caption" }}</h2><p class="pre">{{ item.caption }}</p></section>{% endif %}
+{% if item.transcript %}<section class="card"><h2>What's said in the video</h2><p class="pre">{{ item.transcript }}</p></section>{% endif %}
+{% if linked %}
+<section class="card">
+  <h2>Linked recipe · <a href="{{ linked.url }}" target="_blank" rel="noopener">{{ linked.site }}</a></h2>
+  <p><strong>{{ linked.title }}</strong></p>
+  <ul>{% for i in linked.ingredients %}<li>{{ i }}</li>{% endfor %}</ul>
+  <ol>{% for s in linked.steps %}<li>{{ s }}</li>{% endfor %}</ol>
+</section>
+{% endif %}
+
+<form method="post" class="card stack">
+  <h2>Recipe</h2>
+  <label>Name <input name="title" value="{{ linked.title if linked else '' }}" required></label>
+  <label>Ingredients <span class="hint">(one per line)</span><textarea name="ingredients" rows="8">{{ linked.ingredients | join("\n") if linked }}</textarea></label>
+  <label>Method <span class="hint">(one step per line)</span><textarea name="steps" rows="8">{{ linked.steps | join("\n") if linked }}</textarea></label>
+  <label>Notes <textarea name="notes" rows="2"></textarea></label>
+  {% if pictures %}
+  <label>Photo
+    <select name="photo">
+      {% if item.platform == "screenshot" %}<option value="">None</option>{% endif %}
+      {% for name in pictures %}<option>{{ name }}</option>{% endfor %}
+    </select></label>
+  {% endif %}
+  <button class="primary">Save recipe</button>
+</form>
+{% if item.status == "ready" %}
+<form method="post" action="/import/{{ item.id }}/skip"><button class="quiet">Not a recipe: skip it</button></form>
+{% endif %}
+{% endblock %}

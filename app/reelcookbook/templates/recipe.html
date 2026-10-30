@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ r.title }} · {{ app_name }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <a class="back" href="/recipes">‹ Recipes</a>
+  <h1>{{ r.title }}</h1>
+  <p class="muted">{% if r.url %}<a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.site or "Original recipe" }}</a>{% else %}Typed in{% endif %}
+    {%- if r.total_minutes %} · {{ r.total_minutes }} min{% endif %}{% if r.yields %} · {{ r.yields }}{% endif %}</p>
+</header>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+{% if r.draft %}
+<div class="card due">
+  <p><strong>Draft from {{ r.site or "a post" }}.</strong> Claude wrote this{% if r.url %} from the post's caption, video and pictures{% else %} from your screenshots{% endif %}. Check the quantities, tags and macros, then confirm or edit it.</p>
+  <div class="button-row">
+    <form method="post" action="/recipes/{{ r.id }}/confirm"><button class="primary small">Looks good</button></form>
+    <a class="button small" href="/recipes/{{ r.id }}/edit">Edit</a>
+  </div>
+</div>
+{% endif %}
+{% if r.image_file %}<img class="recipe-hero" src="/recipes/{{ r.id }}/image?v={{ r.image_file }}" alt="">{% endif %}
+{% if r.cuisine or r.proteins or r.tags %}
+<div class="chips recipe-tags">
+  {% if r.cuisine %}<a class="chip" href="/recipes?cuisine={{ r.cuisine | urlencode }}">{{ r.cuisine }}</a>{% endif %}
+  {% for p in r.proteins %}<a class="chip" href="/recipes?protein={{ p | urlencode }}">{{ p }}</a>{% endfor %}
+  {% for t in r.tags %}<a class="chip" href="/recipes?tag={{ t | urlencode }}">{{ t }}</a>{% endfor %}
+</div>
+{% endif %}
+{% if r.kcal is not none or r.protein_g is not none or r.carbs_g is not none or r.fat_g is not none %}
+<section class="card macros">
+  <div class="macro-grid">
+    {% for label, value, unit in [("Calories", r.kcal, "kcal"), ("Protein", r.protein_g, "g"), ("Carbs", r.carbs_g, "g"), ("Fat", r.fat_g, "g")] %}
+    <div class="macro"><span class="macro-num">{{ value | round | int if value is not none else "–" }}</span><span class="macro-unit">{{ unit }}</span><span class="macro-label">{{ label }}</span></div>
+    {% endfor %}
+  </div>
+  <p class="hint">Per serving{% if r.servings %} · makes {{ r.servings }}{% endif %}{% if r.macros_source %} · {{ {"recipe": "from the recipe", "estimated": "estimated by Claude, so treat as a guide", "entered": "entered by hand"}[r.macros_source] }}{% endif %}</p>
+</section>
+{% endif %}
+
+
+<section class="card">
+  <h2>Ingredients</h2>
+  {% if ingredients %}
+  <ul class="checklist" id="ingredients">
+    {% for i in ingredients %}
+    <li><label class="check"><input type="checkbox" value="{{ i.text }}"{{ "" if i.staple else " checked" }}> {{ i.text }}</label></li>
+    {% endfor %}
+  </ul>
+  <button type="button" class="primary wide" id="copy-list">Copy ticked as a shopping list</button>
+  <p class="hint">Untick anything you already have, then paste the list into Notes, Reminders or your shopping app.</p>
+  <script>
+    (function () {
+      var btn = document.getElementById("copy-list");
+      function copy(text) {
+        if (navigator.clipboard && window.isSecureContext) { return navigator.clipboard.writeText(text); }
+        // Plain http:// addresses (e.g. on the home network) have no clipboard API: use the old way
+        var area = document.createElement("textarea");
+        area.value = text; area.setAttribute("readonly", ""); area.style.position = "fixed"; area.style.opacity = "0";
+        document.body.appendChild(area); area.select();
+        var ok = document.execCommand("copy");
+        document.body.removeChild(area);
+        return ok ? Promise.resolve() : Promise.reject();
+      }
+      btn.addEventListener("click", function () {
+        var items = [].map.call(document.querySelectorAll("#ingredients input:checked"), function (c) { return c.value; });
+        copy(items.join("\n")).then(function () {
+          btn.textContent = "Copied " + items.length + " ingredient" + (items.length === 1 ? "" : "s");
+        }, function () { btn.textContent = "Couldn't copy on this device"; });
+        setTimeout(function () { btn.textContent = "Copy ticked as a shopping list"; }, 2500);
+      });
+    })();
+  </script>
+  {% else %}
+  <p class="muted">No ingredients saved.</p>
+  {% endif %}
+</section>
+
+{% if r.steps %}
+<section class="card">
+  <h2>Method</h2>
+  <ol class="method">{% for s in r.steps %}<li>{{ s }}</li>{% endfor %}</ol>
+</section>
+{% endif %}
+{% if r.notes %}
+<section class="card"><h2>Notes</h2><p class="pre">{{ r.notes }}</p></section>
+{% endif %}
+<p class="footer-link"><a href="/recipes/{{ r.id }}/edit">Edit recipe</a></p>
+{% endblock %}

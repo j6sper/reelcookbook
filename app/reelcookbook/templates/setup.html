@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Welcome · {{ app_name }}{% endblock %}
+{% block content %}
+<div class="narrow">
+  <h1 class="brand">Welcome to {{ app_name }}</h1>
+  <p class="muted">Create the first account. You can add everyone else in your household from Settings afterwards.</p>
+  <form method="post" action="/setup" class="card stack">
+    {% if error %}<p class="alert">{{ error }}</p>{% endif %}
+    <label>Your name
+      <input name="display_name" value="{{ display_name or '' }}" placeholder="e.g. Sam" required>
+    </label>
+    <label>Username <span class="hint">(what you'll type to log in)</span>
+      <input name="username" value="{{ username or '' }}" autocomplete="username" autocapitalize="none" autocorrect="off" required>
+    </label>
+    <label>Password <span class="hint">(at least 8 characters)</span>
+      <input name="password" type="password" autocomplete="new-password" minlength="8" required>
+    </label>
+    <label>Password again
+      <input name="password2" type="password" autocomplete="new-password" minlength="8" required>
+    </label>
+    <button class="primary">Create account</button>
+  </form>
+</div>
+{% endblock %}

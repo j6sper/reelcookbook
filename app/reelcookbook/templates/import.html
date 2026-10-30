@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Import · {{ app_name }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <h1>Import</h1>
+  <p class="muted">Recipes from Instagram, TikTok and screenshots</p>
+</header>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+
+<section class="card">
+  <h2>How it works</h2>
+  <p class="muted">{{ app_name }} downloads each post, keeps the caption, writes down what's said in the video and saves the cover, a few still frames or the photo slides. {% if writer_on %}Claude then turns it into a recipe draft for you to check.{% else %}You then write the recipe up from those (or add a Claude API key to have it done for you).{% endif %} Videos are deleted straight away.</p>
+</section>
+
+<section class="card stack">
+  <h2>Add posts</h2>
+  <form method="post" action="/import/links" class="stack">
+    <textarea name="links" rows="3" placeholder="Paste Instagram or TikTok links, one per line" aria-label="Links"></textarea>
+    <div class="button-row">
+      <button class="primary">Add to queue</button>
+      <button type="button" id="paste-btn" hidden>Paste</button>
+    </div>
+  </form>
+  <p class="hint">In Instagram or TikTok, tap Share → Copy link, then paste it here. On Android, once {{ app_name }} is on your home screen you can share posts straight to it.</p>
+</section>
+
+<section class="card stack">
+  <h2>Claude</h2>
+  {% if not writer_on %}
+  <p class="muted">Not set up. Add an Anthropic API key (<span class="mono">ANTHROPIC_API_KEY</span> in <span class="mono">.env</span>) and Claude writes each downloaded post up as a recipe by itself. Until then, tap a post that's ready to write it up yourself.</p>
+  {% elif writer.state == "running" %}
+  <p>Working on it now… <span class="muted">{{ writer.message }}</span></p>
+  {% elif writer.state and writer.message %}
+  <p>{{ "⚠ " if writer.state == "error" }}{{ writer.message }}</p>
+  {% if writer.at %}<p class="hint">{{ writer.at | from_timestamp }}</p>{% endif %}
+  {% else %}
+  <p class="muted">Ready. Claude starts on each post as soon as it's downloaded.</p>
+  {% endif %}
+  {% if writer_on and counts.get("ready") and writer.state != "running" %}
+  <form method="post" action="/import/write-now"><button class="primary">Write {{ counts.ready }} now</button></form>
+  {% endif %}
+</section>
+
+<h2 class="section-title">Queue{% if counts %} · {% for k in ["ready", "writing", "queued", "working", "saved", "skipped", "failed"] if counts.get(k) %}{{ counts[k] }} {{ {"ready": "ready for Claude" if writer_on else "ready to write up", "writing": "being written", "queued": "waiting", "working": "downloading", "saved": "saved", "skipped": "skipped", "failed": "failed"}[k] }}{{ ", " if not loop.last }}{% endfor %}{% endif %}</h2>
+{% if items %}
+<ul class="card rows">
+  {% for i in items %}
+  <li class="row-item">
+    {% set write = i.status == "ready" and not writer_on %}
+    {% set link = '/recipes/' ~ i.recipe_id if i.recipe_id else ('/import/' ~ i.id ~ '/write' if write else (i.url if i.platform != "screenshot" else "")) %}
+    <img class="queue-thumb" src="/import/{{ i.id }}/thumb" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+    <a class="row-main"{% if link %} href="{{ link }}"{% endif %}{% if link and not i.recipe_id and not write %} target="_blank" rel="noopener"{% endif %}>
+      <span class="row-title">{{ "Screenshots" if i.platform == "screenshot" else (i.uploader or (i.platform | title)) }}{% if i.caption %} · {{ i.caption[:60] }}{% endif %}</span>
+      <span class="row-meta">{{ {"ready": "Ready for Claude" if writer_on else "Ready: tap to write it up", "writing": "Claude is writing it…", "queued": "Waiting", "working": "Downloading…", "saved": "Saved as a recipe", "skipped": "Skipped", "failed": "Failed"}[i.status] }}{% if i.error %} · {{ i.error }}{% endif %}</span>
+    </a>
+    {% if i.status in ("failed", "skipped") %}
+    <div class="row-actions">
+      <form method="post" action="/import/{{ i.id }}/retry"><button class="small">Retry</button></form>
+      {% if i.caption or i.transcript or i.frames != "[]" %}<a class="button small" href="/import/{{ i.id }}/write">Write up</a>{% endif %}
+    </div>
+    {% elif i.status in ("queued", "ready") %}
+    <form method="post" action="/import/{{ i.id }}/skip"><button class="quiet-inline small">Skip</button></form>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="card"><p class="muted">Nothing queued yet.</p></div>
+{% endif %}
+
+<h2 class="section-title">Instagram login &amp; more ways to add</h2>
+<section class="card stack" id="instagram">
+  <h2>Instagram login</h2>
+  {% if has_cookies %}
+  <p>✓ Saved. It's used to download Instagram posts.</p>
+  <form method="post" action="/import/cookies/delete" onsubmit="return confirm('Remove the saved Instagram login?')"><button class="quiet-inline small">Remove it</button></form>
+  {% else %}
+  <p class="muted">Instagram only lets logged-in accounts download posts, so {{ app_name }} needs your login cookies. TikTok doesn't need this.</p>
+  {% endif %}
+  <details>
+    <summary>{{ "Replace the login" if has_cookies else "How to add it" }}</summary>
+    <ol class="steps">
+      <li>On a computer, log in to <strong>instagram.com</strong> in Chrome or Firefox.</li>
+      <li>Install the browser extension <strong>“Get cookies.txt LOCALLY”</strong>.</li>
+      <li>On instagram.com, open the extension and choose <strong>Export</strong> (Netscape format). You get a file like <span class="mono">www.instagram.com_cookies.txt</span>.</li>
+      <li>Upload it here. It's stored privately on your server. It works like a password, so don't share it. Logging out of Instagram in that browser cancels it.</li>
+    </ol>
+    <form method="post" action="/import/cookies" enctype="multipart/form-data" class="stack">
+      <input type="file" name="file" accept=".txt,text/plain" required aria-label="Instagram cookies file">
+      <button>Upload Instagram login</button>
+    </form>
+  </details>
+</section>
+
+<section class="card stack" id="screenshots">
+  <h2>From screenshots</h2>
+  <p class="muted">Screenshots of one recipe, e.g. from MyFitnessPal, a cookbook or a website.{% if writer_on %} Claude reads them, including any calories and macros shown.{% endif %}</p>
+  <form method="post" action="/import/screenshots" enctype="multipart/form-data" class="stack">
+    <input type="file" name="files" accept="image/*" multiple required aria-label="Screenshots">
+    {% if writer_on %}<input name="note" placeholder="Optional note, e.g. “my protein pancakes, makes 4”" aria-label="Note for Claude">{% endif %}
+    <button class="primary">Upload screenshots</button>
+  </form>
+  <p class="hint">Up to {{ max_shots }} screenshots, all of the same recipe. For a second recipe, upload again.</p>
+</section>
+
+<section class="card stack">
+  <h2>Add all your saved posts</h2>
+  <details>
+    <summary>Get the file from Instagram</summary>
+    <ol class="steps">
+      <li>Instagram app → profile → ☰ → <strong>Accounts Centre → Your information and permissions → Download your information</strong>.</li>
+      <li>Choose <strong>Some of your information</strong>, tick <strong>Saved</strong>, choose <strong>Download to device</strong>, format <strong>JSON</strong>, date range <strong>All time</strong>.</li>
+      <li>Instagram emails you when it's ready (it can take a while). Download the .zip.</li>
+    </ol>
+  </details>
+  <details>
+    <summary>Get the file from TikTok</summary>
+    <ol class="steps">
+      <li>TikTok app → Profile → ☰ → <strong>Settings and privacy → Account → Download your data</strong>.</li>
+      <li>Choose <strong>JSON</strong>, then <strong>Request data</strong>. When it's ready, download it from the same screen.</li>
+    </ol>
+  </details>
+  <form method="post" action="/import/export" enctype="multipart/form-data" class="stack">
+    <input type="file" name="file" accept=".zip,.json,.html" required aria-label="Data export file">
+    <button>Upload and add saved posts</button>
+  </form>
+  <p class="hint">Not every saved post is a recipe{% if writer_on %}; Claude skips the ones that aren't{% endif %}. Instagram posts are downloaded a couple of minutes apart so the account isn't flagged, so a big list takes a while.</p>
+</section>
+
+<script>
+  (function () {
+    var paste = document.getElementById("paste-btn"), box = document.querySelector("textarea[name=links]");
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      paste.hidden = false;
+      paste.addEventListener("click", function () {
+        navigator.clipboard.readText().then(function (text) { box.value = (box.value ? box.value + "\n" : "") + text; }).catch(function () {});
+      });
+    }
+    {% if counts.get("queued") or counts.get("working") or counts.get("writing") or writer.state == "running" %}
+    // Keep the queue up to date while things are happening (unless someone is typing)
+    setInterval(function () {
+      var typing = document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName);
+      if (!typing && !box.value && !document.querySelector("details[open]")) { location.reload(); }
+    }, 15000);
+    {% endif %}
+  })();
+</script>
+{% endblock %}

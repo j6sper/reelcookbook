@@ -1,0 +1,19 @@
+# Reel Cookbook. All data is kept in ./data (back up that folder).
+services:
+  reelcookbook:
+    build: ./app
+    container_name: reelcookbook
+    restart: unless-stopped        # start again automatically when the computer boots
+    user: "${UID:-1000}:${GID:-1000}"   # files in ./data belong to you, not root
+    env_file: .env                 # settings and the Claude API key (never committed to git)
+    environment:
+      DATA_DIR: /data
+    ports:
+      - "${PORT:-8095}:8000"       # open the app at http://<this computer's IP>:8095
+    volumes:
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=5)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3

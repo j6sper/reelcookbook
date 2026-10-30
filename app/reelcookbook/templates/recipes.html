@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Recipes · {{ app_name }}{% endblock %}
+{% macro g(n) %}{{ "%g" | format(n) }}{% endmacro %}
+{% block content %}
+<header class="page-head head-row">
+  <h1>Recipes</h1>
+  <div class="button-row">
+    <a class="button small" href="/import">Import</a>
+    <a class="button primary small" href="/recipes/new">+ Add</a>
+  </div>
+</header>
+<form method="get" action="/recipes" class="add-row">
+  <input type="search" name="q" value="{{ f.q }}" placeholder="Search recipes or ingredients" aria-label="Search recipes">
+  {% for k in ["cuisine", "protein", "tag", "sort"] if f[k] and not (k == "sort" and f[k] == "new") %}<input type="hidden" name="{{ k }}" value="{{ f[k] }}">{% endfor %}
+  {% if f.min_protein is not none %}<input type="hidden" name="min_protein" value="{{ g(f.min_protein) }}">{% endif %}
+  {% if f.max_kcal is not none %}<input type="hidden" name="max_kcal" value="{{ g(f.max_kcal) }}">{% endif %}
+</form>
+
+<div class="chips">
+  <a href="{{ link(tag='') }}" class="chip{{ ' on' if not f.tag }}">All</a>
+  {% for t in tags %}<a href="{{ link(tag='' if f.tag == t else t) }}" class="chip{{ ' on' if f.tag == t }}">{{ t }}</a>{% endfor %}
+</div>
+
+<details class="card filters"{% if f.cuisine or f.protein or f.min_protein is not none or f.max_kcal is not none or f.sort != "new" %} open{% endif %}>
+  <summary>Filter &amp; sort{% if f.cuisine or f.protein or f.min_protein is not none or f.max_kcal is not none %} · on{% endif %}</summary>
+  <form method="get" action="/recipes" class="filter-grid">
+    {% if f.q %}<input type="hidden" name="q" value="{{ f.q }}">{% endif %}
+    {% if f.tag %}<input type="hidden" name="tag" value="{{ f.tag }}">{% endif %}
+    <label>Cuisine
+      <select name="cuisine"><option value="">Any</option>{% for c in cuisines %}<option{{ ' selected' if f.cuisine == c }}>{{ c }}</option>{% endfor %}</select></label>
+    <label>Meat / base
+      <select name="protein"><option value="">Any</option>{% for p in proteins %}<option{{ ' selected' if f.protein == p }}>{{ p }}</option>{% endfor %}</select></label>
+    <label>Protein at least <span class="hint">g per serve</span>
+      <input name="min_protein" inputmode="numeric" value="{{ g(f.min_protein) if f.min_protein is not none }}" placeholder="e.g. 30"></label>
+    <label>Calories up to <span class="hint">kcal per serve</span>
+      <input name="max_kcal" inputmode="numeric" value="{{ g(f.max_kcal) if f.max_kcal is not none }}" placeholder="e.g. 600"></label>
+    <label class="span">Sort by
+      <select name="sort">{% for k, v in sorts.items() %}<option value="{{ k }}"{{ ' selected' if f.sort == k }}>{{ v }}</option>{% endfor %}</select></label>
+    <div class="button-row span"><button class="primary small">Show recipes</button><a class="button small" href="/recipes">Clear all</a></div>
+  </form>
+</details>
+
+{% if filtering %}<p class="hint result-count">Showing {{ recipes | length }} of {{ total }} · <a href="/recipes">Clear filters</a></p>{% endif %}
+{% if untagged and writer_on %}<p class="hint result-count">Claude is adding tags and macros to {{ untagged }} recipe{{ "s" if untagged != 1 }}. They'll show in filters in a minute or two.</p>{% endif %}
+{% if recipes %}
+<ul class="recipe-grid">
+  {% for r in recipes %}
+  <li><a href="/recipes/{{ r.id }}" class="recipe-tile">
+    {% if r.image_file %}<img src="/recipes/{{ r.id }}/image?v={{ r.image_file }}" alt="" loading="lazy">{% else %}<span class="no-img">🍽️</span>{% endif %}
+    <span class="tile-title">{{ r.title }}</span>
+    {% if r.kcal is not none or r.protein_g is not none %}<span class="tile-macros">{% if r.kcal is not none %}{{ r.kcal | round | int }} kcal{% endif %}{% if r.kcal is not none and r.protein_g is not none %} · {% endif %}{% if r.protein_g is not none %}<b>{{ r.protein_g | round | int }} g protein</b>{% endif %}</span>{% endif %}
+    <span class="tile-meta">{% if r.draft %}Draft · {% endif %}{{ ([r.cuisine] if r.cuisine else []) | join }}{% if r.cuisine and r.proteins %} · {% endif %}{{ r.proteins | join(", ") }}{% if not r.cuisine and not r.proteins %}{{ r.site or "Typed in" }}{% endif %}{% if r.total_minutes %} · {{ r.total_minutes }} min{% endif %}</span>
+  </a></li>
+  {% endfor %}
+</ul>
+{% elif filtering %}
+<div class="card"><p class="muted">No recipes match those filters. <a href="/recipes">Clear them</a></p></div>
+{% else %}
+<div class="card"><p class="muted">No recipes yet. Tap <a href="/import">Import</a> to add Instagram or TikTok posts, or “+ Add” for a recipe website.</p></div>
+{% endif %}
+{% endblock %}

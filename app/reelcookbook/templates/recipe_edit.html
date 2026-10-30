@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Edit recipe · {{ app_name }}{% endblock %}
+{% block content %}
+<header class="page-head">
+  <a class="back" href="/recipes/{{ r.id }}">‹ Back</a>
+  <h1>Edit recipe</h1>
+</header>
+{% if message %}<p class="notice">{{ message }}</p>{% endif %}
+<form method="post" class="card stack">
+  <label>Name <input name="title" value="{{ r.title }}" required></label>
+  <label>Ingredients <span class="hint">(one per line)</span><textarea name="ingredients" rows="10">{{ r.ingredients | join("\n") }}</textarea></label>
+  <label>Method <span class="hint">(one step per line)</span><textarea name="steps" rows="10">{{ r.steps | join("\n") }}</textarea></label>
+  <label>Notes <textarea name="notes" rows="3">{{ r.notes }}</textarea></label>
+
+  <h2>Tags</h2>
+  <label>Cuisine
+    <select name="cuisine"><option value="">None</option>{% for c in cuisines %}<option{{ ' selected' if r.cuisine == c }}>{{ c }}</option>{% endfor %}</select></label>
+  <fieldset class="tick-grid"><legend>Meat / base</legend>
+    {% for p in proteins %}<label class="check"><input type="checkbox" name="protein" value="{{ p }}"{{ ' checked' if p in r.proteins }}> {{ p }}</label>{% endfor %}
+  </fieldset>
+  <fieldset class="tick-grid"><legend>Tags</legend>
+    {% for t in tags %}<label class="check"><input type="checkbox" name="tag" value="{{ t }}"{{ ' checked' if t in r.tags }}> {{ t }}</label>{% endfor %}
+  </fieldset>
+
+  <h2>Macros <span class="hint">per serving{% if r.macros_source %} · {{ sources[r.macros_source] | lower }}{% endif %}</span></h2>
+  <div class="macro-inputs">
+    <label>Serves <input name="servings" inputmode="numeric" value="{{ r.servings or '' }}"></label>
+    <label>Calories <input name="kcal" inputmode="decimal" value="{{ '%g' | format(r.kcal) if r.kcal is not none }}"></label>
+    <label>Protein (g) <input name="protein_g" inputmode="decimal" value="{{ '%g' | format(r.protein_g) if r.protein_g is not none }}"></label>
+    <label>Carbs (g) <input name="carbs_g" inputmode="decimal" value="{{ '%g' | format(r.carbs_g) if r.carbs_g is not none }}"></label>
+    <label>Fat (g) <input name="fat_g" inputmode="decimal" value="{{ '%g' | format(r.fat_g) if r.fat_g is not none }}"></label>
+  </div>
+  <button class="primary">Save</button>
+</form>
+
+<section class="card stack" id="photo">
+  <h2>Photo</h2>
+  {% if r.image_file %}<img class="recipe-hero" src="/recipes/{{ r.id }}/image?v={{ r.image_file }}" alt="Current photo">{% else %}<p class="muted">No photo yet.</p>{% endif %}
+  <form method="post" action="/recipes/{{ r.id }}/photo" enctype="multipart/form-data" class="stack">
+    <input type="file" name="file" accept="image/*" required aria-label="Photo">
+    <button>Upload a photo</button>
+  </form>
+  {% if choices %}
+  <p class="hint">Or tap one from the post (cover, slides or video stills):</p>
+  <div class="photo-picks">
+    {% for name in choices %}
+    <form method="post" action="/recipes/{{ r.id }}/photo/pick"><input type="hidden" name="name" value="{{ name }}">
+      <button class="photo-pick" aria-label="Use this one"><img src="/recipes/{{ r.id }}/choices/{{ name }}" alt="" loading="lazy"></button></form>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if r.image_file %}<form method="post" action="/recipes/{{ r.id }}/photo/remove" onsubmit="return confirm('Remove this photo?')"><button class="quiet-inline small">Remove the photo</button></form>{% endif %}
+</section>
+
+<form method="post" action="/recipes/{{ r.id }}/delete" onsubmit="return confirm('Delete this recipe?')">
+  <button class="quiet danger">Delete recipe</button>
+</form>
+{% endblock %}
