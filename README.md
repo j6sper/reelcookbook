@@ -16,7 +16,7 @@ Everything runs on your own computer, and your recipes stay in one folder on it.
 
 ## What you need
 
-- A computer that stays on (a home server, NAS, Raspberry Pi 4/5 or an old PC) with **Docker** installed ([Get Docker](https://docs.docker.com/get-docker/)).
+- A computer that stays on (a home server, NAS or an old PC) with **Docker** installed ([Get Docker](https://docs.docker.com/get-docker/)). It's been tested on an ordinary 64-bit Intel/AMD Linux machine; ARM boards like a Raspberry Pi should work but haven't been tried.
 - About 2 GB of disk space, plus room for your recipes' pictures.
 - **Recommended:** a way for Claude to write the recipes for you. Either:
   - a **Claude Pro or Max subscription** (from [claude.ai](https://claude.ai)): it uses your plan's allowance, with nothing extra to pay, or
@@ -27,9 +27,10 @@ Everything runs on your own computer, and your recipes stay in one folder on it.
 ## Quick start
 
 ```
-git clone https://github.com/<you>/reelcookbook.git
+git clone https://github.com/j6sper/reelcookbook.git
 cd reelcookbook
 cp .env.example .env
+printf 'UID=%s\nGID=%s\n' "$(id -u)" "$(id -g)" >> .env   # the app runs as you, so it can write to ./data
 nano .env                  # set your TIMEZONE
 docker compose up -d
 ```
@@ -161,7 +162,7 @@ The app is meant for your home network. To use it on your phone when you're out,
 - **"Usage limit reached" (subscription):** nothing to do. It carries on by itself when your plan's limit resets. Pick Sonnet or Haiku in Settings → Claude to make your allowance go further.
 - **Forgotten password:** another household member can't reset it yet. Stop the app and delete that person's row, or ask whoever set it up.
 - **Updating Claude Code:** it's pinned in `app/Dockerfile` (`CLAUDE_CODE_VERSION`). Change the number and run `docker compose up -d --build`.
-- **`unable to open database file` in the logs:** the `data` folder belongs to root. Run `sudo chown -R $(id -u):$(id -g) data` and start again.
+- **`unable to open database file` in the logs:** the app can't write to the `data` folder. Check `.env` has `UID=` and `GID=` lines matching `id -u` and `id -g` (the quick start adds them), run `sudo chown -R $(id -u):$(id -g) data`, then `docker compose up -d`.
 
 ## How it works
 
